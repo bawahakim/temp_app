@@ -2,20 +2,25 @@ name: CI
 
 on:
   push:
-    branches:
-      - develop
+    branches: [ main ]
   pull_request:
-
-concurrency:
-  group: develop-temp_app-${{ github.event.number }}
-  cancel-in-progress: true
 
 jobs:
   tests:
+    name: ${{ matrix.test }} tests
     runs-on: ubuntu-latest
+
     strategy:
-      fail-fast: false
-    name: Server
+      matrix:
+        include:
+          - test: unit
+            run: bench run-tests --app frappe_types
+          - test: ui
+            run: |
+              echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+              nohup bench start &> bench.log &
+              sleep 10
+              bench run-ui-tests frappe_types --headless
 
     services:
       redis-cache:
@@ -46,7 +51,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Setup Node
         uses: actions/setup-node@v3
@@ -90,18 +95,24 @@ jobs:
       - name: Install
         working-directory: /home/runner/frappe-bench
         run: |
-          bench get-app temp_app $GITHUB_WORKSPACE
+          bench get-app frappe_types $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app temp_app
+          bench --site test_site install-app frappe_types
           bench build
         env:
-          CI: 'Yes'
-
-      - name: Run Tests
+          CI: "Yes"
+      
+      - name: Setup Site
         working-directory: /home/runner/frappe-bench
         run: |
-          bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app temp_app
+          bench use test_site
+          bench execute frappe.utils.install.complete_setup_wizard
+          bench set-config allow_tests true
+          bench set-config developer_mode 1
+
+      - name: Run ${{ matrix.test }} tests
+        working-directory: /home/runner/frappe-bench
+        run: ${{ matrix.run }}
         env:
           TYPE: server
