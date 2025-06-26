@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - develop
   pull_request:
 
 jobs:
@@ -14,13 +15,13 @@ jobs:
       matrix:
         include:
           - test: unit
-            run: bench run-tests --app frappe_types
+            run: bench run-tests --app temp_app
           - test: ui
             run: |
               echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
               nohup bench start &> bench.log &
               sleep 10
-              bench run-ui-tests frappe_types --headless
+              bench run-ui-tests temp_app --headless
 
     services:
       redis-cache:
@@ -95,21 +96,20 @@ jobs:
       - name: Install
         working-directory: /home/runner/frappe-bench
         run: |
-          bench get-app frappe_types $GITHUB_WORKSPACE
+          bench get-app temp_app $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app frappe_types
+          bench --site test_site install-app temp_app
           bench build
         env:
           CI: "Yes"
-      
+
       - name: Setup Site
         working-directory: /home/runner/frappe-bench
         run: |
           bench use test_site
           bench execute frappe.utils.install.complete_setup_wizard
           bench set-config allow_tests true
-          bench set-config developer_mode 1
 
       - name: Run ${{ matrix.test }} tests
         working-directory: /home/runner/frappe-bench
